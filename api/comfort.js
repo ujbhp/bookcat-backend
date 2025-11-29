@@ -1,42 +1,29 @@
 // api/comfort.js
 
-export const config = {
-  runtime: "edge", // ✅ Edge 함수로 동작
-};
+// 🔹 GitHub Pages 도메인 (프론트가 돌아가는 주소)
+const ALLOWED_ORIGIN = "https://ujbhp.github.io";
 
-export default async function handler(req) {
+export default async function handler(req, res) {
+  // ✅ 모든 요청에 CORS 헤더 먼저 세팅
+  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // ✅ 프리플라이트(OPTIONS) 요청 처리
+  if (req.method === "OPTIONS") {
+    // preflight에서는 바디 없이 200만 돌려주면 됨
+    return res.status(200).end();
+  }
+
+  // 1) POST만 허용
   if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Only POST allowed" }),
-      {
-        status: 405,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return res.status(405).json({ error: "Only POST allowed" });
   }
 
-  let body;
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(
-      JSON.stringify({ error: "Invalid JSON body" }),
-      {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
+  const { emotion } = req.body || {};
 
-  const emotion = body?.emotion;
   if (!emotion) {
-    return new Response(
-      JSON.stringify({ error: "emotion is required" }),
-      {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return res.status(400).json({ error: "emotion is required" });
   }
 
   const payload = {
@@ -62,38 +49,22 @@ export default async function handler(req) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
 
     const data = await openaiRes.json();
     const comfort = data?.choices?.[0]?.message?.content?.trim();
 
+    // 혹시라도 OpenAI가 이상한 응답 주면 방어
     if (!comfort) {
-      return new Response(
-        JSON.stringify({ error: "No comfort message from OpenAI", raw: data }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      return res.status(500).json({ error: "No comfort message generated" });
     }
 
-    return new Response(
-      JSON.stringify({ comfort }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return res.status(200).json({ comfort });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "OpenAI request failed" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    console.error(err);
+    return res.status(500).json({ error: "OpenAI request failed" });
   }
 }
